@@ -41,9 +41,7 @@ jobs:
 
       - name: Extract project ZIP
         run: |
-          if [ -f "StepLab-Android-Project.zip" ]; then
-            unzip -o StepLab-Android-Project.zip
-          fi
+          unzip -o StepLab-Android-Project.zip
 
       - name: Find Android project
         run: |
@@ -55,14 +53,51 @@ jobs:
 
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERROR: Android project not found"
-            find . -maxdepth 4 -type f
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "Project found: $PROJECT_DIR"
 
-          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          echo "Found project: $PROJECT_DIR"
+
+      - name: Fix Java and Kotlin JVM target
+        run: |
+          FILE="$PROJECT_DIR/app/build.gradle.kts"
+
+          if [ ! -f "$FILE" ]; then
+            echo "ERROR: app/build.gradle.kts not found"
+            exit 1
+          fi
+
+          python3 - "$FILE" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r") as f:
+              content = f.read()
+
+          if "compileOptions" not in content:
+              content = content.replace(
+                  "    compileSdk = 35",
+                  """    compileSdk = 35
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }"""
+              )
+
+          with open(path, "w") as f:
+              f.write(content)
+
+          print("Java/Kotlin target configuration:")
+          print(content)
+          PY
 
       - name: Build APK
         run: |
@@ -72,7 +107,13 @@ jobs:
       - name: Verify APK
         run: |
           APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK not found"
+            exit 1
+          fi
+
+          echo "APK successfully created!"
           ls -lh "$APK"
 
       - name: Save APK
